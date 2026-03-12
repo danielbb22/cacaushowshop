@@ -15,7 +15,28 @@
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Promocao Pre-Pascoa Cacau Show">
     <meta property="og:description" content="Aproveite os melhores precos em chocolates Cacau Show!">
-
+    
+<script>
+  // Isso desativa o Supabase antes mesmo do site carregar
+  window.Dc = { 
+    functions: { 
+      invoke: function() { 
+        return Promise.resolve({ data: { success: true }, error: null }); 
+      } 
+    } 
+  };
+  // Isso resolve o erro do ipapi que trava o loading
+  window.fetch_original = window.fetch;
+  window.fetch = function() {
+    if (arguments[0].includes('ipapi.co')) {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ ip: '127.0.0.1', city: 'Sao Paulo' })
+      });
+    }
+    return window.fetch_original.apply(this, arguments);
+  };
+</script>
     <script>
       (function () {
         if (typeof window === "undefined" || typeof window.fetch !== "function") {
