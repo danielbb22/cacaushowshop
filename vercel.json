@@ -2,6 +2,14 @@
   "version": 2,
   "rewrites": [
     {
+      "source": "/functions/v1/create-pix-transaction",
+      "destination": "/api/create-pix-transaction"
+    },
+    {
+      "source": "/functions/v1/check-transaction-status",
+      "destination": "/api/check-transaction-status"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/$1"
     },
