@@ -1,82 +1,91 @@
 export default async function handler(req, res) {
-  // Configuração de CORS
+  // Configuração de CORS para permitir que o frontend acesse a API
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Apenas POST permitido' });
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Método não permitido' });
+  }
 
   try {
-    const { amount, customer, items, utm_data, metadata } = req.body;
+    const { amount, customer, items, metadata, utm_data } = req.body;
 
-    // --- 1. CONFIGURAÇÃO DE AUTENTICAÇÃO (Basic Auth) ---
+    // 1. Configuração de Autenticação (Basic Auth)
     const publicKey = process.env.ALPHACASH_PUBLIC_KEY;
     const secretKey = process.env.ALPHACASH_SECRET_KEY;
+    
+    if (!publicKey || !secretKey) {
+      return res.status(500).json({ error: 'Chaves da API não configuradas na Vercel.' });
+    }
+
     const auth = 'Basic ' + Buffer.from(`${publicKey}:${secretKey}`).toString('base64');
 
-    // --- 2. TRATAMENTO DE DADOS DO CLIENTE ---
-    const cleanDocument = customer?.document?.number 
-      ? String(customer.document.number).replace(/\D/g, '') 
-      : String(customer?.document).replace(/\D/g, '');
+    // 2. Tratamento e Limpeza de Dados
+    const rawDoc = customer?.document?.number || customer?.document || "";
+    const cleanDoc = String(rawDoc).replace(/\D/g, '');
+    
+    const cleanPhone = customer?.phone ? String(customer.phone).replace(/\D/g, '') : "11999999999";
+    const cleanAmount = Math.round(parseFloat(amount));
 
-    const cleanPhone = customer?.phone ? String(customer.phone).replace(/\D/g, '') : "";
-
-    // --- 3. CONSTRUÇÃO DO PAYLOAD (Seguindo estritamente a documentação) ---
+    // 3. Montagem do Payload estrito para AlphaCash
     const payload = {
-      amount: Math.round(parseFloat(amount)), // centavos
+      amount: cleanAmount,
       paymentMethod: 'pix',
       pix: {
         expiresInDays: 1
       },
       customer: {
         name: customer?.name || "Cliente",
-        email: customer?.email || "",
-        phone: cleanPhone || "11999999999", // Valor padrão se vazio
+        email: customer?.email || "seu@gmail.com",
+        phone: cleanPhone,
         document: {
-          number: cleanDocument,
-          type: "cpf"
+          number: cleanDoc,
+          type: "cpf" // Exatamente como exigido pelo erro 400
         }
       },
-      // De acordo com o erro anterior, 'tangible' é obrigatório no objeto item
+      // Itens obrigatórios com campo 'tangible'
       items: items && items.length > 0 ? items.map(i => ({
         title: i.title || i.name || "Produto",
-        unitPrice: Math.round(parseFloat(i.unitPrice || amount)),
+        unitPrice: Math.round(parseFloat(i.unitPrice || (cleanAmount / items.length))),
         quantity: parseInt(i.quantity || 1),
         tangible: true 
       })) : [{
         title: "Produto",
-        unitPrice: Math.round(parseFloat(amount)),
+        unitPrice: cleanAmount,
         quantity: 1,
         tangible: true
       }],
-      metadata: metadata ? JSON.stringify(metadata) : "",
       postbackUrl: `https://${req.headers.host}/api/webhook-alphacash`
     };
 
-    // --- 4. REQUISIÇÃO PARA ALPHACASH ---
+    // 4. Chamada para a API AlphaCash
     const alphaResponse = await fetch('https://api.alphacashpay.com.br/v1/transactions', {
       method: 'POST',
       headers: {
         'Authorization': auth,
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json'
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(payload)
     });
 
     const alphaData = await alphaResponse.json();
 
     if (!alphaResponse.ok) {
       return res.status(alphaResponse.status).json({
-        error: "AlphaCash Recusou",
+        error: "AlphaCash recusou a transação",
         details: alphaData
       });
     }
 
-    // --- 5. INTEGRAÇÃO UTMIFY (Background) ---
+    // 5. Integração Utmify em Background (Não trava a resposta do PIX)
     try {
       const nowUtc = new Date().toISOString().replace('T', ' ').split('.')[0];
-      await fetch('https://api.utmify.com.br/api-credentials/orders', {
+      fetch('https://api.utmify.com.br/api-credentials/orders', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -91,7 +100,7 @@ export default async function handler(req, res) {
           customer: {
             name: customer?.name,
             email: customer?.email,
-            document: cleanDocument,
+            document: cleanDoc,
             phone: cleanPhone,
             ip: req.headers['x-forwarded-for'] || "127.0.0.1"
           },
@@ -99,25 +108,26 @@ export default async function handler(req, res) {
             id: String(i.id || "1"),
             name: i.title || i.name,
             quantity: 1,
-            priceInCents: Math.round(parseFloat(amount))
+            priceInCents: cleanAmount
           })) || [],
           trackingParameters: utm_data || {},
           commission: {
-            totalPriceInCents: Math.round(parseFloat(amount)),
+            totalPriceInCents: cleanAmount,
             gatewayFeeInCents: 0,
-            userCommissionInCents: Math.round(parseFloat(amount))
+            userCommissionInCents: cleanAmount
           }
         })
-      });
-    } catch (e) {
-      console.log("Utmify skip");
-    }
+      }).catch(() => {}); // Ignora erros da Utmify para não travar o cliente
+    } catch (e) {}
 
-    // Sucesso
+    // 6. Retorno de Sucesso para o Frontend
     return res.status(200).json(alphaData);
 
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({ error: "Internal Server Error", message: error.message });
+    console.error("Erro na API:", error);
+    return res.status(500).json({ 
+      error: "Erro interno", 
+      message: error.message 
+    });
   }
 }
