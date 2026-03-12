@@ -1,87 +1,79 @@
 export default async function handler(req, res) {
-  // Configuração de CORS para permitir chamadas do seu domínio
+  // Configuração de CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
-  // Responde rapidamente a requisições de preflight (OPTIONS)
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Apenas método POST é permitido' });
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Apenas POST permitido' });
 
   try {
-    const { amount, customer, items, utm_data } = req.body;
+    const { amount, customer, items, utm_data, metadata } = req.body;
 
-    // --- 1. TRATAMENTO DO DOCUMENTO (Evita erro 'replace is not a function') ---
-    let cleanDocument = "";
-    if (customer && customer.document) {
-      if (typeof customer.document === 'object' && customer.document.number) {
-        cleanDocument = String(customer.document.number).replace(/\D/g, '');
-      } else if (typeof customer.document === 'string') {
-        cleanDocument = customer.document.replace(/\D/g, '');
-      }
-    }
-
-    // --- 2. LIMPEZA DE DEMAIS DADOS ---
-    const cleanPhone = customer?.phone ? String(customer.phone).replace(/\D/g, '') : "";
-    const cleanAmount = Math.round(parseFloat(amount)); // Garante que seja inteiro (centavos)
-
-    // --- 3. AUTENTICAÇÃO ALPHACASH ---
+    // --- 1. CONFIGURAÇÃO DE AUTENTICAÇÃO (Basic Auth) ---
     const publicKey = process.env.ALPHACASH_PUBLIC_KEY;
     const secretKey = process.env.ALPHACASH_SECRET_KEY;
-    
-    if (!publicKey || !secretKey) {
-      return res.status(500).json({ error: 'Configuração de chaves ausente no servidor (Env Vars)' });
-    }
+    const auth = 'Basic ' + Buffer.from(`${publicKey}:${secretKey}`).toString('base64');
 
-    const authHeader = 'Basic ' + Buffer.from(`${publicKey}:${secretKey}`).toString('base64');
+    // --- 2. TRATAMENTO DE DADOS DO CLIENTE ---
+    const cleanDocument = customer?.document?.number 
+      ? String(customer.document.number).replace(/\D/g, '') 
+      : String(customer?.document).replace(/\D/g, '');
 
-    // --- 4. CHAMADA PARA API ALPHACASH ---
+    const cleanPhone = customer?.phone ? String(customer.phone).replace(/\D/g, '') : "";
+
+    // --- 3. CONSTRUÇÃO DO PAYLOAD (Seguindo estritamente a documentação) ---
+    const payload = {
+      amount: Math.round(parseFloat(amount)), // centavos
+      paymentMethod: 'pix',
+      pix: {
+        expiresInDays: 1
+      },
+      customer: {
+        name: customer?.name || "Cliente",
+        email: customer?.email || "",
+        phone: cleanPhone || "11999999999", // Valor padrão se vazio
+        document: {
+          number: cleanDocument,
+          type: "cpf"
+        }
+      },
+      // De acordo com o erro anterior, 'tangible' é obrigatório no objeto item
+      items: items && items.length > 0 ? items.map(i => ({
+        title: i.title || i.name || "Produto",
+        unitPrice: Math.round(parseFloat(i.unitPrice || amount)),
+        quantity: parseInt(i.quantity || 1),
+        tangible: true 
+      })) : [{
+        title: "Produto",
+        unitPrice: Math.round(parseFloat(amount)),
+        quantity: 1,
+        tangible: true
+      }],
+      metadata: metadata ? JSON.stringify(metadata) : "",
+      postbackUrl: `https://${req.headers.host}/api/webhook-alphacash`
+    };
+
+    // --- 4. REQUISIÇÃO PARA ALPHACASH ---
     const alphaResponse = await fetch('https://api.alphacashpay.com.br/v1/transactions', {
       method: 'POST',
       headers: {
-        'Authorization': authHeader,
-        'Content-Type': 'application/json'
+        'Authorization': auth,
+        'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        amount: cleanAmount,
-        paymentMethod: 'pix',
-        pix: { expiresInDays: 1 },
-        customer: {
-          name: customer?.name || "Cliente",
-          email: customer?.email || "",
-          document: cleanDocument,
-          phone: cleanPhone
-        },
-        items: items && items.length > 0 ? items.map(i => ({
-          title: i.title || i.name || "Produto",
-          unitPrice: Math.round(parseFloat(i.unitPrice || (cleanAmount / items.length))),
-          quantity: parseInt(i.quantity || 1)
-        })) : [{
-          title: "Produto",
-          unitPrice: cleanAmount,
-          quantity: 1
-        }],
-        postbackUrl: `https://${req.headers.host}/api/webhook-alphacash`
-      })
+      body: JSON.stringify(payload),
     });
 
     const alphaData = await alphaResponse.json();
 
     if (!alphaResponse.ok) {
-      console.error("AlphaCash Reject:", alphaData);
-      return res.status(alphaResponse.status).json({ 
-        error: 'AlphaCash recusou a transação', 
-        details: alphaData 
+      return res.status(alphaResponse.status).json({
+        error: "AlphaCash Recusou",
+        details: alphaData
       });
     }
 
-    // --- 5. NOTIFICAÇÃO UTMIFY (Background) ---
-    // Try/catch isolado para não impedir a geração do PIX se a Utmify falhar
+    // --- 5. INTEGRAÇÃO UTMIFY (Background) ---
     try {
       const nowUtc = new Date().toISOString().replace('T', ' ').split('.')[0];
       await fetch('https://api.utmify.com.br/api-credentials/orders', {
@@ -107,25 +99,25 @@ export default async function handler(req, res) {
             id: String(i.id || "1"),
             name: i.title || i.name,
             quantity: 1,
-            priceInCents: cleanAmount
+            priceInCents: Math.round(parseFloat(amount))
           })) || [],
           trackingParameters: utm_data || {},
           commission: {
-            totalPriceInCents: cleanAmount,
+            totalPriceInCents: Math.round(parseFloat(amount)),
             gatewayFeeInCents: 0,
-            userCommissionInCents: cleanAmount
+            userCommissionInCents: Math.round(parseFloat(amount))
           }
         })
       });
     } catch (e) {
-      console.warn("Utmify falhou, mas o PIX foi gerado.");
+      console.log("Utmify skip");
     }
 
-    // Retorno de sucesso para o frontend
+    // Sucesso
     return res.status(200).json(alphaData);
 
   } catch (error) {
-    console.error("Critical Error:", error);
-    return res.status(500).json({ error: 'Erro interno no servidor', message: error.message });
+    console.error(error);
+    return res.status(500).json({ error: "Internal Server Error", message: error.message });
   }
 }
