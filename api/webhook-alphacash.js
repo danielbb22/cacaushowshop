@@ -1,11 +1,10 @@
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
 
-  const event = req.body;
+  try {
+    const event = req.body;
 
-  // Verifique o status enviado pela AlphaCash (ajuste conforme o retorno real deles)
-  if (event.status === 'paid' || event.status === 'succeeded') {
-    try {
+    if (event.status === 'paid' || event.status === 'succeeded') {
       const nowUtc = new Date().toISOString().replace('T', ' ').split('.')[0];
       
       await fetch('https://api.utmify.com.br/api-credentials/orders', {
@@ -21,10 +20,9 @@ export default async function handler(req, res) {
           paymentMethod: 'pix'
         })
       });
-    } catch (e) {
-      console.error("Erro Webhook Utmify:", e);
     }
+    return res.status(200).send('OK');
+  } catch (error) {
+    return res.status(500).send('Webhook Error');
   }
-
-  return res.status(200).send('Webhook Recebido');
 }
