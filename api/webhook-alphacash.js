@@ -1,15 +1,13 @@
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).send();
+  if (req.method !== 'POST') return res.status(405).end();
 
-  try {
-    const event = req.body; // A AlphaCash envia os dados da transação aqui
-    
-    // Verificamos se o status é 'paid' ou 'succeeded' conforme AlphaCash
-    if (event.status === 'paid' || event.status === 'succeeded') {
-      
+  const event = req.body;
+
+  // Verifique o status enviado pela AlphaCash (ajuste conforme o retorno real deles)
+  if (event.status === 'paid' || event.status === 'succeeded') {
+    try {
       const nowUtc = new Date().toISOString().replace('T', ' ').split('.')[0];
-
-      // Notificar Utmify que o status agora é PAID
+      
       await fetch('https://api.utmify.com.br/api-credentials/orders', {
         method: 'POST',
         headers: {
@@ -17,18 +15,16 @@ export default async function handler(req, res) {
           'x-api-token': process.env.UTMIFY_TOKEN
         },
         body: JSON.stringify({
-          orderId: event.id, // O mesmo ID enviado anteriormente
+          orderId: String(event.id),
           status: 'paid',
           approvedDate: nowUtc,
-          // Re-enviamos os dados básicos para garantir o match
-          customer: { email: event.customer.email },
           paymentMethod: 'pix'
         })
       });
+    } catch (e) {
+      console.error("Erro Webhook Utmify:", e);
     }
-
-    return res.status(200).send('OK');
-  } catch (error) {
-    return res.status(500).send('Error');
   }
+
+  return res.status(200).send('Webhook Recebido');
 }
