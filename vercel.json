@@ -6,8 +6,12 @@
       "destination": "/api/webhook-alphacash"
     },
     {
-      "source": "/functions/v1/:path*",
-      "destination": "/api/:path*"
+      "source": "/functions/v1/create-pix-transaction",
+      "destination": "/api/create-pix-transaction"
+    },
+    {
+      "source": "/functions/v1/check-transaction-status",
+      "destination": "/api/check-transaction-status"
     },
     {
       "source": "/json",
