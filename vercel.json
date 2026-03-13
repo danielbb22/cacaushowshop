@@ -1,12 +1,30 @@
 {
   "version": 2,
   "rewrites": [
-    { "source": "/functions/v1/send-utmify-order", "destination": "/api/webhook-alphacash" },
-    { "source": "/functions/v1/:path*", "destination": "/api/webhook-alphacash" },
-    { "source": "/json", "destination": "/api/webhook-alphacash" },
-    { "source": "/api/create-pix-transaction", "destination": "/api/create-pix-transaction" },
-    { "source": "/api/check-transaction-status", "destination": "/api/check-transaction-status" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    { 
+      "source": "/functions/v1/send-utmify-order", 
+      "destination": "/api/webhook-alphacash" 
+    },
+    { 
+      "source": "/functions/v1/:path*", 
+      "destination": "/api/webhook-alphacash" 
+    },
+    { 
+      "source": "/json", 
+      "destination": "/api/webhook-alphacash" 
+    },
+    { 
+      "source": "/api/create-pix-transaction", 
+      "destination": "/api/create-pix-transaction" 
+    },
+    { 
+      "source": "/api/check-transaction-status", 
+      "destination": "/api/check-transaction-status" 
+    },
+    { 
+      "source": "/((?!api/|functions/).*)", 
+      "destination": "/index.html" 
+    }
   ],
   "headers": [
     {
