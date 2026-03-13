@@ -19,11 +19,7 @@
       "destination": "/api/webhook-alphacash" 
     },
     { 
-      "source": "/produto/(.*)", 
-      "destination": "/index.html" 
-    },
-    { 
-      "source": "/((?!api/|functions/|_next/|static/|products/|.*\\..*).*)", 
+      "source": "/((?!api/|functions/|.*\\..*).*)", 
       "destination": "/index.html" 
     }
   ],
