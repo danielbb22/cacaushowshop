@@ -18,54 +18,84 @@
     
 <script>
   (function () {
-    if (typeof window === "undefined" || typeof window.fetch !== "function") {
-      return;
-    }
+    if (typeof window === "undefined" || typeof window.fetch !== "function") return;
 
     var originalFetch = window.fetch.bind(window);
-    // Trava para evitar loops: salva a resposta do PIX por referência externa
     var pixCache = null;
 
-    function resolveUrl(input) {
-      if (typeof input === "string") return input;
-      if (input && typeof input.url === "string") return input.url;
-      return "";
-    }
-
     window.fetch = function (input, init) {
-      var url = resolveUrl(input);
+      var url = typeof input === "string" ? input : (input.url || "");
 
-      // Interceptar criação de PIX
-      if (url.indexOf("/functions/v1/create-pix-transaction") !== -1) {
-        // Se já geramos um PIX nesta sessão, retorna o cache para parar o loop
-        if (pixCache) {
-          return Promise.resolve(pixCache.clone());
-        }
+      // 1. Mata as chamadas inúteis que estão travando o console (IPAPI e UTMify)
+      if (url.indexOf("ipapi.co") !== -1 || url.indexOf("send-utmify-order") !== -1) {
+        return Promise.resolve(new Response(JSON.stringify({ status: "skipped" }), { status: 200 }));
+      }
 
-        return originalFetch("/api/create-pix-transaction", init).then(function(response) {
-          if (response.ok) {
-            // Salva a resposta e clona para o retorno
-            var clonedResponse = response.clone();
-            pixCache = clonedResponse; 
-            return response;
+      // 2. Trava o loop do PIX
+      if (url.indexOf("/create-pix-transaction") !== -1) {
+        if (pixCache) return Promise.resolve(pixCache.clone());
+        
+        return originalFetch("/api/create-pix-transaction", init).then(function(res) {
+          if (res.ok) {
+            pixCache = res.clone();
+            return res;
           }
-          return response;
+          return res;
         });
       }
 
-      // Interceptar checagem de status
-      if (url.indexOf("/functions/v1/check-transaction-status") !== -1) {
-        var normalizedUrl = url;
-        try {
-          normalizedUrl = new URL(url, window.location.origin).toString();
-        } catch (_) {}
-
-        var query = normalizedUrl.indexOf("?") !== -1 ? normalizedUrl.slice(normalizedUrl.indexOf("?")) : "";
+      // 3. Redireciona checagem de status
+      if (url.indexOf("/check-transaction-status") !== -1) {
+        var query = url.indexOf("?") !== -1 ? url.slice(url.indexOf("?")) : "";
         return originalFetch("/api/check-transaction-status" + query, init);
       }
 
       return originalFetch(input, init);
     };
+  })();
+</script>
+
+<script>
+  (function () {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+
+    function enforcePixOnly() {
+      var buttons = Array.prototype.slice.call(document.querySelectorAll("button"));
+      var pixToggle = null;
+
+      buttons.forEach(function (btn) {
+        var text = btn.textContent.toLowerCase();
+
+        // Esconde botões de cartão para evitar cliques errados
+        if (text.indexOf("cartao") !== -1 || text.indexOf("credito") !== -1) {
+          btn.style.display = "none";
+        }
+
+        // Acha o seletor de PIX
+        if (text.indexOf("pix") !== -1 && text.indexOf("desconto") !== -1) {
+          pixToggle = btn;
+        }
+      });
+
+      // SÓ CLICA SE NÃO TIVER SIDO CLICADO AINDA E SE O QR CODE NÃO ESTIVER NA TELA
+      // Isso evita o loop infinito de cliques
+      if (pixToggle && !pixToggle.dataset.alreadyClicked) {
+        var hasQrCode = document.querySelector('img[src*="base64"]') || document.querySelector('canvas');
+        if (!hasQrCode) {
+          pixToggle.dataset.alreadyClicked = "true";
+          pixToggle.click();
+        }
+      }
+    }
+
+    // Executa com um pequeno atraso para o React montar
+    setTimeout(enforcePixOnly, 1000);
+
+    var observer = new MutationObserver(function() {
+      enforcePixOnly();
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
   })();
 </script>
     <script type="module" crossorigin src="assets/index-SbekvIi0.js"></script>
