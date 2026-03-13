@@ -1,11 +1,35 @@
 {
   "version": 2,
   "cleanUrls": true,
+  "trailingSlash": false,
   "rewrites": [
-    { "source": "/api/create-pix-transaction", "destination": "/api/create-pix-transaction" },
-    { "source": "/api/check-transaction-status", "destination": "/api/check-transaction-status" },
-    { "source": "/functions/v1/:path*", "destination": "/api/webhook-alphacash" },
-    { "source": "/json", "destination": "/api/webhook-alphacash" },
-    { "source": "/((?!api/|functions/|assets/|products/|.*\\..*).*)", "destination": "/index.html" }
+    { 
+      "source": "/api/create-pix-transaction", 
+      "destination": "/api/create-pix-transaction" 
+    },
+    { 
+      "source": "/api/check-transaction-status", 
+      "destination": "/api/check-transaction-status" 
+    },
+    { 
+      "source": "/functions/v1/:path*", 
+      "destination": "/api/webhook-alphacash" 
+    },
+    { 
+      "source": "/json", 
+      "destination": "/api/webhook-alphacash" 
+    },
+    { 
+      "source": "/assets/(.*)", 
+      "destination": "/assets/$1" 
+    },
+    { 
+      "source": "/products/(.*)", 
+      "destination": "/products/$1" 
+    },
+    { 
+      "source": "/(.*)", 
+      "destination": "/index.html" 
+    }
   ]
 }
