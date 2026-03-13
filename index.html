@@ -11,63 +11,68 @@
     <link rel="preload" as="image" href="products/dreams-dubai-pistache.png" />
     <link rel="preload" as="image" href="products/dreams-mil-folhas.png" />
 
-    <script>
-      (function () {
-        if (typeof window === "undefined" || typeof window.fetch !== "function") return;
+   <script>
+  (function () {
+    if (typeof window === "undefined" || typeof window.fetch !== "function") return;
+    var originalFetch = window.fetch.bind(window);
+    var pixCache = null;
 
-        var originalFetch = window.fetch.bind(window);
-        var pixCache = null;
+    window.fetch = function (input, init) {
+      var url = typeof input === "string" ? input : (input.url || "");
 
-        window.fetch = function (input, init) {
-          var url = typeof input === "string" ? input : (input.url || "");
+      if (url.indexOf("ipapi.co") !== -1 || url.indexOf("send-utmify-order") !== -1 || url.indexOf("rum?") !== -1) {
+        return Promise.resolve(new Response(JSON.stringify({ success: true }), { status: 200 }));
+      }
 
-          // 1. Bloqueia chamadas de rastreio que travam o checkout
-          if (url.indexOf("ipapi.co") !== -1 || url.indexOf("send-utmify-order") !== -1 || url.indexOf("rum?") !== -1) {
-            return Promise.resolve(new Response(JSON.stringify({ status: "skipped" }), { status: 200 }));
-          }
+      if (url.indexOf("/create-pix-transaction") !== -1) {
+        if (pixCache) return Promise.resolve(pixCache.clone());
 
-          // 2. Intercepta e Formata a Criação do PIX
-          if (url.indexOf("/create-pix-transaction") !== -1) {
-            if (pixCache) return Promise.resolve(pixCache.clone());
+        return originalFetch("/api/create-pix-transaction", init).then(async function(res) {
+          if (res.ok) {
+            var d = await res.json();
+            // Pega o código PIX de qualquer lugar que ele venha na sua API
+            var code = d.qrcode || d.pix_code || d.copy_and_paste || (d.pix && d.pix.qrcode);
+            var id = d.id || d.secureId || "123";
 
-            return originalFetch("/api/create-pix-transaction", init).then(async function(res) {
-              if (res.ok) {
-                var data = await res.json();
-                
-                // Mapeia o seu JSON para o formato que o index-SbekvIi0.js espera
-                var mappedResponse = {
-                  success: true,
-                  data: {
-                    id: data.id,
-                    pix: {
-                      qrcode: data.qrcode || data.pix_code || data.copy_and_paste
-                    },
-                    qrCode: data.qrcode || data.pix_code
-                  }
-                };
-
-                var finalRes = new Response(JSON.stringify(mappedResponse), {
-                  status: 200,
-                  headers: { 'Content-Type': 'application/json' }
-                });
-
-                pixCache = finalRes.clone();
-                return finalRes;
+            // INJEÇÃO UNIVERSAL: Entrega o código em todos os formatos conhecidos
+            var universalBody = {
+              success: true,
+              id: id,
+              pix_code: code,
+              qrcode: code,
+              copy_and_paste: code,
+              data: {
+                id: id,
+                pix_code: code,
+                qrcode: code,
+                qrCode: code,
+                pix: {
+                  qrcode: code,
+                  pix_code: code
+                }
               }
-              return res;
+            };
+
+            var mocked = new Response(JSON.stringify(universalBody), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' }
             });
+            pixCache = mocked.clone();
+            return mocked;
           }
+          return res;
+        });
+      }
 
-          // 3. Intercepta Checagem de Status
-          if (url.indexOf("/check-transaction-status") !== -1) {
-            var query = url.indexOf("?") !== -1 ? url.slice(url.indexOf("?")) : "";
-            return originalFetch("/api/check-transaction-status" + query, init);
-          }
+      if (url.indexOf("/check-transaction-status") !== -1) {
+        var q = url.indexOf("?") !== -1 ? url.slice(url.indexOf("?")) : "";
+        return originalFetch("/api/check-transaction-status" + q, init);
+      }
 
-          return originalFetch(input, init);
-        };
-      })();
-    </script>
+      return originalFetch(input, init);
+    };
+  })();
+</script>
 
     <script>
       (function () {
