@@ -19,32 +19,27 @@
 <script>
   (function () {
     if (typeof window === "undefined" || typeof window.fetch !== "function") return;
-
     var originalFetch = window.fetch.bind(window);
     var pixCache = null;
 
     window.fetch = function (input, init) {
       var url = typeof input === "string" ? input : (input.url || "");
 
-      // 1. Mata as chamadas inúteis que estão travando o console (IPAPI e UTMify)
-      if (url.indexOf("ipapi.co") !== -1 || url.indexOf("send-utmify-order") !== -1) {
-        return Promise.resolve(new Response(JSON.stringify({ status: "skipped" }), { status: 200 }));
+      // 1. Mata chamadas de rastreio que geram erros no console
+      if (url.indexOf("ipapi.co") !== -1 || url.indexOf("send-utmify-order") !== -1 || url.indexOf("rum?") !== -1) {
+        return Promise.resolve(new Response(JSON.stringify({ status: "ok" }), { status: 200 }));
       }
 
-      // 2. Trava o loop do PIX
+      // 2. Trava de Cache para o PIX
       if (url.indexOf("/create-pix-transaction") !== -1) {
         if (pixCache) return Promise.resolve(pixCache.clone());
-        
         return originalFetch("/api/create-pix-transaction", init).then(function(res) {
-          if (res.ok) {
-            pixCache = res.clone();
-            return res;
-          }
+          if (res.ok) { pixCache = res.clone(); return res; }
           return res;
         });
       }
 
-      // 3. Redireciona checagem de status
+      // 3. Status Check
       if (url.indexOf("/check-transaction-status") !== -1) {
         var query = url.indexOf("?") !== -1 ? url.slice(url.indexOf("?")) : "";
         return originalFetch("/api/check-transaction-status" + query, init);
@@ -57,45 +52,51 @@
 
 <script>
   (function () {
-    if (typeof window === "undefined" || typeof document === "undefined") return;
-
     function enforcePixOnly() {
       var buttons = Array.prototype.slice.call(document.querySelectorAll("button"));
       var pixToggle = null;
 
       buttons.forEach(function (btn) {
         var text = btn.textContent.toLowerCase();
-
-        // Esconde botões de cartão para evitar cliques errados
+        // Esconde crédito
         if (text.indexOf("cartao") !== -1 || text.indexOf("credito") !== -1) {
           btn.style.display = "none";
         }
-
-        // Acha o seletor de PIX
+        // Identifica botão PIX
         if (text.indexOf("pix") !== -1 && text.indexOf("desconto") !== -1) {
           pixToggle = btn;
         }
       });
 
-      // SÓ CLICA SE NÃO TIVER SIDO CLICADO AINDA E SE O QR CODE NÃO ESTIVER NA TELA
-      // Isso evita o loop infinito de cliques
-      if (pixToggle && !pixToggle.dataset.alreadyClicked) {
-        var hasQrCode = document.querySelector('img[src*="base64"]') || document.querySelector('canvas');
+      // Só clica se não houver QR Code na tela e se ainda não clicamos
+      if (pixToggle && !pixToggle.dataset.done) {
+        var hasQrCode = !!document.querySelector('img[src*="base64"], canvas, svg');
         if (!hasQrCode) {
-          pixToggle.dataset.alreadyClicked = "true";
+          pixToggle.dataset.done = "true";
           pixToggle.click();
+          console.log("PIX Selecionado automaticamente.");
         }
       }
     }
 
-    // Executa com um pequeno atraso para o React montar
-    setTimeout(enforcePixOnly, 1000);
-
-    var observer = new MutationObserver(function() {
+    // Inicia o Observer com segurança
+    function startObserver() {
+      if (!document.body) {
+        setTimeout(startObserver, 100);
+        return;
+      }
+      
       enforcePixOnly();
-    });
+      var observer = new MutationObserver(enforcePixOnly);
+      observer.observe(document.body, { childList: true, subtree: true });
+    }
 
-    observer.observe(document.body, { childList: true, subtree: true });
+    // Garante que o DOM está carregado
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", startObserver);
+    } else {
+      startObserver();
+    }
   })();
 </script>
     <script type="module" crossorigin src="assets/index-SbekvIi0.js"></script>
